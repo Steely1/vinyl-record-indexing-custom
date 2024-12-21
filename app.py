@@ -10,6 +10,7 @@ from openai import OpenAI
 import base64
 import concurrent.futures
 import csv
+import datetime
 
 client = OpenAI()
 
@@ -18,7 +19,7 @@ results = []
 labels = ["vinyl record", "something else", "open palm"]
 
 model, _, preprocess = mobileclip.create_model_and_transforms(
-    "mobileclip_s0", pretrained="checkpoints/mobileclip_s0.pt"
+    "mobileclip_s0", pretrained="../ml-mobileclip/checkpoints/mobileclip_s0.pt"
 )
 tokenizer = mobileclip.get_tokenizer("mobileclip_s0")
 
@@ -32,6 +33,8 @@ recorded_vinyl_vectors = []
 vinyl_count = 0
 BREAK_PROMPT = "open palm"
 BREAK_PROMPT_BUFFER_SIZE = 10
+now = datetime.datetime.now()
+formatted_date = now.strftime("%Y-%m-%d_%H:%M:%S")
 
 if not os.path.exists("vinyls"):
     os.makedirs("vinyls")
@@ -68,7 +71,7 @@ with torch.no_grad(), torch.cuda.amp.autocast():
             image_features
         ):
             vinyl_count += 1
-            cv2.imwrite(f"vinyls/vinyl_{vinyl_count}.jpg", frame)
+            cv2.imwrite(f"vinyls/{formatted_date}_vinyl_{vinyl_count}.jpg", frame)
             label_buffer = []
             recorded_vinyl_vectors.append(image_features)
             print(f"Recorded vinyl {vinyl_count}")
@@ -116,17 +119,18 @@ with torch.no_grad(), torch.cuda.amp.autocast():
 def get_image_data(image_path):
     with open(image_path, "rb") as image_file:
         response = client.chat.completions.create(
-            model="gpt-4-vision-preview",
+            model="gpt-4o",
             messages=[
                 {
                     "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": """what vinyl record is in this image? return in format:
+                            "text": """What vinyl record is in this image, and what genre is it? Return in format:
 
         Artist: artist
-        Album Name: name""",
+        Album Name: name
+        Genre: genre""",
                         },
                         {
                             "type": "image_url",
@@ -144,20 +148,21 @@ def get_image_data(image_path):
         result = response.choices[0].message.content
         artist = result.split("\n")[0].split(":")[1].strip()
         album = result.split("\n")[1].split(":")[1].strip()
+        genre = result.split("\n")[2].split(":")[2].strip()
 
-    return {"artist": artist, "album": album}
+    return {"artist": artist, "album": album, "AI-genre": genre, "my-genre": "", "my-location": "", "image-path": image_path}
 
 
 with concurrent.futures.ThreadPoolExecutor() as executor:
     futures = {
-        executor.submit(get_image_data, f"vinyls/vinyl_{i}.jpg"): i
+        executor.submit(get_image_data, f"vinyls/{formatted_date}_vinyl_{i}.jpg"): i
         for i in range(1, vinyl_count + 1)
     }
     for future in concurrent.futures.as_completed(futures):
         i = futures[future]
         results.append(future.result())
 
-with open("results.csv", "w") as csvfile:
-    writer = csv.DictWriter(csvfile, fieldnames=["artist", "album"])
+with open("collection.csv", "a") as csvfile:
+    writer = csv.DictWriter(csvfile, fieldnames=["artist", "album", "AI-genre", "my-genre", "my-location", "image-path"])
     writer.writeheader()
     writer.writerows(results)
