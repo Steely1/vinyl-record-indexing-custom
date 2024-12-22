@@ -5,14 +5,14 @@ from PIL import Image
 import mobileclip
 import os
 from collections import deque
+from anthropic import Anthropic
 
-from openai import OpenAI
 import base64
 import concurrent.futures
 import csv
 import datetime
 
-client = OpenAI()
+anthropic = Anthropic(api_key=os.environ['API_KEY'])
 
 results = []
 
@@ -118,33 +118,32 @@ with torch.no_grad(), torch.cuda.amp.autocast():
 
 def get_image_data(image_path):
     with open(image_path, "rb") as image_file:
-        response = client.chat.completions.create(
-            model="gpt-4o",
+        response = client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            max_tokens=1024,
             messages=[
                 {
                     "role": "user",
                     "content": [
                         {
-                            "type": "text",
-                            "text": """What vinyl record is in this image, and what genre is it? Return in format:
-
-        Artist: artist
-        Album Name: name
-        Genre: genre""",
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": "data:image/jpeg;base64,"
-                                + base64.b64encode(image_file.read()).decode("utf-8"),
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": "image/jpeg",
+                                "data": image_file,
                             },
                         },
+                        {
+                            "type": "text",
+                            "text": """What vinyl record is in this image, and what genre is it? Return in format:
+                            Artist: artist
+                            Album Name: name
+                            Genre: genre""",
+                        }
                     ],
                 }
             ],
-            max_tokens=300,
         )
-
         result = response.choices[0].message.content
         artist = result.split("\n")[0].split(":")[1].strip()
         album = result.split("\n")[1].split(":")[1].strip()
@@ -162,7 +161,7 @@ with concurrent.futures.ThreadPoolExecutor() as executor:
         i = futures[future]
         results.append(future.result())
 
-with open("collection.csv", "a") as csvfile:
-    writer = csv.DictWriter(csvfile, fieldnames=["artist", "album", "AI-genre", "my-genre", "my-location", "image-path"])
+with open("collection.csv", "w") as csvfile:
+    writer = csv.DictWriter(csvfile, fieldnames=["artist", "album", "AI-genre", "my-genre", "my-location", "image-path"], delimiter='\t')
     writer.writeheader()
     writer.writerows(results)
