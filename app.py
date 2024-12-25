@@ -12,7 +12,7 @@ import concurrent.futures
 import csv
 import datetime
 
-anthropic = Anthropic(api_key=os.environ['API_KEY'])
+client = Anthropic(api_key=os.environ['API_KEY'])
 
 results = []
 
@@ -35,6 +35,7 @@ BREAK_PROMPT = "open palm"
 BREAK_PROMPT_BUFFER_SIZE = 10
 now = datetime.datetime.now()
 formatted_date = now.strftime("%Y-%m-%d_%H:%M:%S")
+NOT_FOUND_STR = "(not found)"
 
 if not os.path.exists("vinyls"):
     os.makedirs("vinyls")
@@ -135,21 +136,28 @@ def get_image_data(image_path):
                         },
                         {
                             "type": "text",
-                            "text": """What vinyl record is in this image, and what genre is it? Return in format:
+                            "text": """What vinyl record is in this image, and what genre is it? Limit your response to these three lines:
                             Artist: artist
                             Album Name: name
-                            Genre: genre""",
+                            Genre: genre
+                            """,
                         }
                     ],
                 }
             ],
         )
-        result = response.choices[0].message.content
-        artist = result.split("\n")[0].split(":")[1].strip()
-        album = result.split("\n")[1].split(":")[1].strip()
-        genre = result.split("\n")[2].split(":")[2].strip()
-
-    return {"artist": artist, "album": album, "AI-genre": genre, "my-genre": "", "my-location": "", "image-path": image_path}
+        result = response.content[0].text
+        if result.startswith("Artist"): 
+            # print(result)
+            artist = result.split("\n")[0].split(":")[1].strip()
+            album = result.split("\n")[1].split(":")[1].strip()
+            genre = result.split("\n")[2].split(":")[1].strip()
+        else:
+            artist = NOT_FOUND_STR
+            album = NOT_FOUND_STR
+            genre = NOT_FOUND_STR
+            
+        return {"artist": artist, "album": album, "AI-genre": genre, "my-category": "", "price-paid": "", "image-path": image_path}
 
 
 with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -159,9 +167,12 @@ with concurrent.futures.ThreadPoolExecutor() as executor:
     }
     for future in concurrent.futures.as_completed(futures):
         i = futures[future]
-        results.append(future.result())
+        the_result = future.result()
+        if not the_result["album"] == NOT_FOUND_STR:
+            results.append(the_result)
+
 
 with open("collection.csv", "w") as csvfile:
-    writer = csv.DictWriter(csvfile, fieldnames=["artist", "album", "AI-genre", "my-genre", "my-location", "image-path"], delimiter='\t')
+    writer = csv.DictWriter(csvfile, fieldnames=["artist", "album", "AI-genre", "my-category", "price-paid", "image-path"], delimiter='\t')
     writer.writeheader()
     writer.writerows(results)
