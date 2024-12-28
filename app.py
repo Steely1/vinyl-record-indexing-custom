@@ -16,7 +16,7 @@ client = Anthropic(api_key=os.environ['API_KEY'])
 
 results = []
 
-labels = ["vinyl record", "something else", "open palm"]
+labels = ["vinyl record", "something else", "ukulele"]
 
 model, _, preprocess = mobileclip.create_model_and_transforms(
     "mobileclip_s0", pretrained="../ml-mobileclip/checkpoints/mobileclip_s0.pt"
@@ -31,7 +31,7 @@ FRAME_PERCENT = BUFFER_MAX_LEN * TO_QUALIFY
 label_buffer = deque(maxlen=BUFFER_MAX_LEN)
 recorded_vinyl_vectors = []
 vinyl_count = 0
-BREAK_PROMPT = "open palm"
+BREAK_PROMPT = "ukulele"
 BREAK_PROMPT_BUFFER_SIZE = 10
 now = datetime.datetime.now()
 formatted_date = now.strftime("%Y-%m-%d_%H:%M:%S")
@@ -136,10 +136,11 @@ def get_image_data(image_path):
                         },
                         {
                             "type": "text",
-                            "text": """What vinyl record is in this image, and what genre is it? Limit your response to these three lines:
+                            "text": """What vinyl record is in this image, and what genre is it? Limit your response to these four lines:
                             Artist: artist
                             Album Name: name
                             Genre: genre
+                            Category: the word 'jazz' if the genre is jazz, 'classical' if it's classical, 'etc.' for all other genres
                             """,
                         }
                     ],
@@ -147,17 +148,20 @@ def get_image_data(image_path):
             ],
         )
         result = response.content[0].text
+        print(result)
         if result.startswith("Artist"): 
             # print(result)
             artist = result.split("\n")[0].split(":")[1].strip()
             album = result.split("\n")[1].split(":")[1].strip()
             genre = result.split("\n")[2].split(":")[1].strip()
+            category = result.split("\n")[3].split(":")[1].strip()
         else:
             artist = NOT_FOUND_STR
             album = NOT_FOUND_STR
             genre = NOT_FOUND_STR
+            category = NOT_FOUND_STR
             
-        return {"artist": artist, "album": album, "AI-genre": genre, "my-category": "", "price-paid": "", "image-path": image_path}
+        return {"artist": artist, "album": album, "AI-genre": genre, "my-category": category, "price-paid": "", "image-path": image_path}
 
 
 with concurrent.futures.ThreadPoolExecutor() as executor:
